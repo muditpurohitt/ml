@@ -1,0 +1,199 @@
+---
+title: "Practical Machine Learning"
+author: "Mudit Purohit"
+date: "October 16, 2018"
+output: 
+  html_document: default
+  html_notebook:
+    theme: cosmo
+    toc: yes
+    toc_float: yes
+    fig_width: 3
+    fig_heigth: 3
+    code_folding: hide
+---
+
+
+
+
+# CODE FOR GETTING THE DATA
+
+```{r}
+directory = "./data"
+url = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+test_url = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+training_file = "pml-training.csv"
+file = "pml-test.csv"
+
+if (!file.exists(directory)) {
+  dir.create(directory)
+}
+if (!file.exists(file.path(directory, training_file))) {
+  download.file(url, destfile=file.path(directory, training_file))
+}
+if (!file.exists(file.path(directory,file))) {
+  download.file(test_url, destfile=file.path(directory,file))
+}
+```
+
+## READING THE COLLECTED DATA
+
+Here we re using two different data frames to load the data
+
+```{r}
+training_df <- read.csv(file.path(directory, training_file))
+testing_df <- read.csv(file.path(directory,file))
+dim(training_df)
+dim(testing_df)
+head(training_df)
+```
+
+## CLEANING THE READ DATA
+
+
+
+```{r}
+library(dplyr)
+sum(complete.cases(training_df))
+```
+
+### Eliminating the columns having NA value
+
+```{r}
+colnames(training_df)
+plot(colMeans(is.na(training_df)))
+```
+
+Converting all the data to numeric form
+
+```{r}
+trainClasse = training_df$classe
+trainRaw = training_df[, sapply(training_df, is.numeric)]
+testRaw = testing_df[, sapply(testing_df, is.numeric)]
+```
+
+Removing all the columns with NAs
+
+```{r}
+trainf <- trainRaw[, colSums(is.na(trainRaw)) == 0]
+# Attach Classe variable
+trainf$classe = trainClasse
+testf <- testRaw[, colSums(is.na(testRaw)) == 0]
+```
+
+Dimensions re given by
+
+```{r}
+dim(trainf)
+dim(testf)
+```
+
+Removing all the useless things
+
+```{r}
+useless = !grepl("X|timestamp", colnames(trainf))
+cols = colnames(trainf)[useless]
+trainf = trainf %>%
+  select(cols)
+
+useless = !grepl("X|timestamp", colnames(testf))
+cols = colnames(testf)[useless]
+testf = testf %>%
+  select(cols)
+```
+
+Dimensions
+
+```{r}
+dim(trainf)
+dim(testf)
+```
+
+## SLICING
+
+
+```{r}
+set.seed(1234)
+library(lubridate)
+library(caret)
+inTrain <- createDataPartition(trainf$classe, p=0.70, list=F)
+train_data <- trainf[inTrain, ]
+validationData <- trainf[-inTrain, ]
+dim(train_data)
+```
+
+## MODELING THE DATA
+
+We will fit a model using **Random Forest** and **Boosting** which are popular for several reasons:
+
+1. With tree-based models, **you can safely ignore** predictors correlation issues
+
+2. Zero- and Near Zero-Variance Predictors **does not** imply on tree-based models
+
+3. As each feature is processed separately, and the possible splits of the data don't depend on scaling, no preprocessing like normalization or standardization of features is needed for decision tree algorithms.
+
+## RANDOM FOREST
+
+### Model-
+
+```{r}
+library(rpart)
+controlRf <- trainControl(method="cv", 5, allowParallel = TRUE)
+modelRf <- train(classe ~ ., data=train_data, method="rf", trControl=controlRf, ntree=250)
+modelRf
+```
+
+### Performance of the model-6
+
+```{r}
+predict_rf <- predict(modelRf, validationData)
+confusionMatrix(validationData$classe, predict_rf)
+
+```
+
+Very accurate model to classify **classe** feature
+
+## Boosting
+
+```{r}
+controlGBM <- trainControl(method="cv", 5, allowParallel = TRUE)
+modelGBM <- training_df(classe ~ ., data=train_data, method="gbm", trControl=controlGBM)
+```
+
+```{r}
+modelGBM
+```
+
+### Model Performance
+
+```{r}
+predict_GBM <- predict(modelGBM, validationData)
+confusionMatrix(validationData$classe, predict_GBM)
+```
+
+With Random Forest, we reach a better accuracy on validation data.
+
+
+
+# Comparing the models
+
+```{r}
+
+model_results <- resamples(list(RF=modelRf, GBM=modelGBM))
+summary(model_results)
+bwplot(model_results)
+dotplot(model_results)
+```
+
+# Predict Test data with RF and GBM
+
+```{r}
+resultRf <- predict(modelRf, testf[, -length(names(testf))])
+resultGBM <- predict(modelGBM, testf[, -length(names(testf))])
+resultRf
+resultGBM
+confusionMatrix(resultRf, resultGBM)
+```
+
+
+The random forest works better on the training data
